@@ -121,8 +121,8 @@ def screen_solve():
             for row in range(BOARD_LENGTH):
                     for column in range(BOARD_LENGTH):
                         if(copy_of.grid[row][column] == 0):
-                            x = puzzle.cell_list[BOARD_LENGTH*row + column].x_offset
-                            y = puzzle.cell_list[BOARD_LENGTH*row + column].y_offset
+                            x = puzzle.cell_list[BOARD_LENGTH*row + column].cell_x_offset
+                            y = puzzle.cell_list[BOARD_LENGTH*row + column].cell_y_offset
                             pyautogui.click(x, y)
                             pyautogui.press(str(sudoku.grid[row][column]))
     except Exception as e:

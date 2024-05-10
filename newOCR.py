@@ -1,6 +1,10 @@
 """
 Author: Shane Bailey
 
+File Description:
+- This file serves to do image recongnition and return a sudoku board
+- It returns the board as a list of cells, order from left to right: top to bottom
+
 Library Resources:
 - pip install numpy
 - pip install opencv-python
@@ -13,32 +17,36 @@ Important References:
 #external libraries
 import numpy
 import cv2
-import tensorflow as tf
-BOARD_LENGTH = 9
-loaded_model = tf.keras.models.load_model('hard_model.keras')
+import tensorflow
+#load in the number recongition model
+number_recongition_model = tensorflow.keras.models.load_model('hard_model.keras')
 #-------------------------Cell_class------------------------------------
+# The cell class is to represent a square within side the sudoku board
+# We need to know what number is there and its offset,
+#           So we can later input them when its solved
 class Cell:
-    def __init__(self, image,stat,id, x_offset, y_offset):
-        self.image = image
-        self.id = id
+    def __init__(self, image, stat, x_offset, y_offset):
+        self.cell_image = image
         self.text = None
-        self.x_offset = x_offset
-        self.y_offset = y_offset
-        self.stats = stat
+        self.cell_x_offset = x_offset
+        self.cell_y_offset = y_offset
+        self.bounding_box_information = stat
         self.predict_text()
 
     def predict_text(self):
-        # Preprocess the image
-        processed_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+        # Gray scales the cell image and resizes it to be 28 by 28 for the image recongnition
+        processed_image = cv2.cvtColor(self.cell_image, cv2.COLOR_BGR2GRAY)
         processed_image = cv2.resize(processed_image, (28, 28))
-        processed_image = processed_image.reshape(1, 28, 28) / 255.0
+        processed_image = processed_image.reshape(1, 28, 28) / 255
         
-        # Predict using the model
-        prediction = loaded_model.predict(processed_image)
-        predicted_class = numpy.argmax(prediction)
-        
-        self.text = str(predicted_class)
+        # Recongnize the number in the image
+        number_recongized = number_recongition_model.predict(processed_image)
+        self.text = numpy.argmax(number_recongized)
 
+#-------------------------Sudoku_class------------------------------------
+# The sudoku class is to represent the sudoku board
+# It contains its image, its offset from the screen_shot
+# and a list of cells 
 class sudoku_puzzle:
     def __init__(self, image):
         self.board_image = None
@@ -46,16 +54,16 @@ class sudoku_puzzle:
         self.board_y_offset = None
         self.cell_list = None
         self.detect_sudoku_board(image)
-        self.return_puzzle()
 
     def detect_sudoku_board(self,image):
+        #gray scales the image and then does a black and white threshold
         gray_scale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         _, black_white_image = cv2.threshold(gray_scale, 254, 255, cv2.THRESH_BINARY)
-
-        contours, hierachy = cv2.findContours(black_white_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        #finds contours, contours being connected lines, in this case squares ie the cells
+        contours, _ = cv2.findContours(black_white_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         biggest_square_contour = None
         max_area = 0
-
+        #find the biggest square contour (the sudoku board)
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
             aspect_ratio = w / float(h)
@@ -66,33 +74,28 @@ class sudoku_puzzle:
                 if area > max_area:
                     max_area = area
                     biggest_square_contour = contour
-
+        #if we do find atleast one square contour gather all the board info
         if biggest_square_contour is not None:
             x, y, w, h = cv2.boundingRect(biggest_square_contour)
 
             self.board_image = image[y:y+h, x:x+w]
             self.board_x_offset = x
             self.board_y_offset = y
+            stats = detect_boxes(self.board_image)
+            self.splice_image(stats)
 
-    def splice_image(self, image, stats):
+    def splice_image(self,stats):
         spliced_images = []
-        image_height = image.shape[0]
-        id = 0
+        image_height = self.board_image.shape[0]
 
         for stat in stats:
             x, y, w, h = stat[0:4]
 
-            if h <= 0.20 * image_height and w <= 0.20 * image_height and h >= 0.07 * image_height and w >= 0.07 * image_height:
-                cropped_image = image[y:y+h, x:x+w]
-                spliced_images.append(Cell(cropped_image, stat, id, self.board_x_offset + x, self.board_y_offset + y))
-                id += 1
+            if h <= 0.20 * image_height:
+                cropped_image = self.board_image[y:y+h, x:x+w]
+                spliced_images.append(Cell(cropped_image, stat, self.board_x_offset + x, self.board_y_offset + y))
 
         self.cell_list = spliced_images
-
-    def return_puzzle(self):
-        if self.board_image is not None and len(self.board_image) > 0:
-            stats = detect_boxes(self.board_image)
-            self.splice_image(self.board_image,stats)
 #------------------------Cell_finder-------------------------------------
 def detect_boxes(image,line_min_width = 50):
     gray_scale=cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
@@ -106,4 +109,3 @@ def detect_boxes(image,line_min_width = 50):
     img_bin_final=cv2.dilate(img_bin_final,final_kernel,iterations=2)
     _, _, stats, _ = cv2.connectedComponentsWithStats(~img_bin_final, connectivity=4, ltype=cv2.CV_32S)
     return stats
-
